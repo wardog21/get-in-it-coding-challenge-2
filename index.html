@@ -1,0 +1,234 @@
+<html>
+	<head>
+		<meta charset="utf-8"/>
+
+		<!-- p5.js zur Visualisierung -->
+		<script src="https://cdn.jsdelivr.net/npm/p5"></script>
+		
+		<script type="text/javascript">
+
+			// Liste der Standorte:
+			// 	x,y 		Geokoordinaten
+			// 	next 		Index des aktuell nächsten Standortes der Liste
+			// 	best 		Index des bisherig besten nächsten Standortes der Liste
+			// 	distances 	Euklidscher Abstand zwischen zwei Standorten
+			let coord = [
+				{x:48.229035, y:11.686153, next:1, best:0, distances:[]},
+				{x:52.580911, y:13.293884, next:2, best:1, distances:[]},
+				{x:52.278748, y:10.524797, next:3, best:2, distances:[]},
+				{x:49.032767, y:8.698372, next:4, best:3, distances:[]},
+				{x:50.829383, y:12.914737, next:5, best:4, distances:[]},
+				{x:51.274774, y:6.794912, next:6, best:5, distances:[]},
+				{x:51.450577, y:7.008871, next:7, best:6, distances:[]},
+				{x:50.136479, y:8.570963, next:8, best:7, distances:[]},
+				{x:51.145511, y:14.970028, next:9, best:8, distances:[]},
+				{x:53.557577, y:9.986065, next:10, best:9, distances:[]},
+				{x:52.337987, y:9.769706, next:11, best:10, distances:[]},
+				{x:48.784417, y:11.399106, next:12, best:11, distances:[]},
+				{x:50.886726, y:6.913119, next:13, best:12, distances:[]},
+				{x:52.519154, y:7.322185, next:14, best:13, distances:[]},
+				{x:51.969304, y:7.61428, next:15, best:14, distances:[]},
+				{x:49.429596, y:11.017404, next:16, best:15, distances:[]},
+				{x:48.571989, y:13.453256, next:17, best:16, distances:[]},
+				{x:53.537779, y:7.936809, next:18, best:17, distances:[]},
+				{x:48.126258, y:8.325873, next:19, best:18, distances:[]},
+				{x:48.694648, y:9.161239, next:20, best:19, distances:[]},
+				{x:49.295011, y:8.649036, next:0, best:20, distances:[]}];
+
+			let cycle = 0; 				// Zähler der Zyklen
+			let length_best = 10000;	// Bisher beste Gesamtdistanz
+
+			// Hilfsfunktionen zur besseren Visualisierung der Koordinaten auf Pixel
+			function mapx(x) {
+				return map(x,48,54,0,300)+100;
+			}
+			function mapy(y) {
+				return map(y,6,15,450,0)+25
+			}
+
+			// Hilfsfunktion zum zeichnen der neuen Karte
+			function draw_map() {
+				// zurücksetzen
+				background(220);
+				
+				// zeichnet alle Verbindungslinien und dann die Standorte der temporären Lösung
+				coord.forEach(city => {
+					line(mapx(city.x),mapy(city.y),mapx(coord[city.next].x),mapy(coord[city.next].y));
+				});
+				coord.forEach(city => {
+					ellipse(mapx(city.x),mapy(city.y),10,10);
+				});
+
+				// zeichnet alle Verbindungslinien und dann die Standorte der bisher besten Lösung um 500 Pixel nach rechts verschoben
+				coord.forEach(city => {
+					line(mapx(city.x)+500,mapy(city.y),mapx(coord[city.best].x)+500,mapy(coord[city.best].y));
+				});
+				coord.forEach(city => {
+					ellipse(mapx(city.x)+500,mapy(city.y),10,10);
+				});
+
+				// Konsolenausgabe der temporären und bisher besten Distanzen
+				console.log("current: ",calc_length()," best: ", length_best);
+			}
+
+			// setup Funktion von p5.js die einmalig zu Beginn aufgerufen wird
+			function setup() {
+				calc_distances();				// einmalige Berechnung der euklidischen Abstände der Standorte
+				nearest_neighbor();				// Initialisierung der Verbindungen mit dem "nächsten Nachbar Alogrithmus"
+				createCanvas(1000, 500, 0, 0);	// Erstellen der Zeichenfläche für p5.js
+			}
+
+			// draw Funktion von p5.js die einmal pro Frame aufgerufen wird
+			function draw() {
+				switch_neighbour();				// Tauschen zweier benachbarter Standorte mit anschließender Überprüfung auf Verbesserung
+				switch_random();				// Tauschen zweier zufälliger Standorte mit anschließender Überprüfung auf Verbesserung
+
+				// cycle wird in switch_neighbour und switch_random erhöht, falls keine Minimierung der Gesamtdistanz möglich ist und auf 0 zurückgesetzt, falls optimiert werden konnte
+				if(cycle >= 200) {
+					// Falls die temporäre Lösung besser ist als die gesamt beste Lösung, wird diese übernommen
+					if(length_best > calc_length()) {
+						length_best = calc_length();
+						coord.forEach(city => {
+							city.best = city.next;
+						});
+					}
+
+					// zurücksetzen der temporären Werte
+					nearest_neighbor();
+				}
+			}
+
+			// Summe aller Distanzen der aktuellen, temporären Lösung
+			function calc_length() {
+				var total = 0.0;
+				coord.forEach(city => {
+					total += city.distances[city.next];
+				});
+				return total;
+			}
+
+			// einmal in setup aufgerufene Funktion zur Berechnung aller euklidischen Abstände aller Standorte
+			function calc_distances() {
+				coord.forEach(city => {
+					coord.forEach(target => {
+						city.distances.push(sqrt(pow((city.x-target.x),2) + pow((city.y-target.y),2)));
+					});
+				});
+			}
+
+			// nächster Nachbar Algorithmus
+			function nearest_neighbor() {
+				var first = Math.floor(Math.random()*21); 	// zufälliger Startstandort
+				var current = first							// aktueller Standortindex
+				var closest = first							// nächstgelegener Standortindex
+				var closest_value = 10000;					// Distanz um nächstgelegenen Standort
+				
+				// Initialisierung der verbleibenden Standorte
+				var left = [];
+				for(var i = 0; i < coord.length; i++) {
+					if(i != first) {
+						left.push(i);
+					}
+				}
+
+				// Suche nach dem nächstgelegenen Standort und übernahme des Elements
+				while(left.length > 0) {
+					// Testen aller möglichen Verbindungen mit verbleibenden Standorten aus left
+					left.forEach((knot,index) => {
+						if(coord[current].distances[knot] < closest_value) {
+							closest_value = coord[current].distances[knot];
+							closest = index;
+						}
+					});
+
+					// Übernahme der kürzesten Verbindung und Reinitialisierung mit diesem Standort
+					coord[current].next = left[closest];
+					current = left[closest];
+					left.splice(closest,1);
+					closest_value = 10000;
+				}
+
+				// Verbindung von letztem und erstem Standort, um einen Zyklus zu schaffen
+				coord[current].next = first;
+			}
+
+			// Tausch eines Standortes mit seinem Nachfolger
+			function switch_neighbour() {
+				// zufällige Wahl des Standorts und Bestimmung seiner Nachbarn
+				var a1 = Math.floor(Math.random()*21);
+				var a2 = coord[a1].next;
+				var a3 = coord[a2].next;
+				var a0 = 100;
+				coord.forEach((city,index) => {
+					if(city.next == a1) {
+						a0 = index;
+					}
+				});
+
+				if(a0 != 100) {
+					// Tausch des Standorts mit seinem Nachfolger
+					var old_length = calc_length();
+					coord[a0].next = a2;
+					coord[a1].next = a3;
+					coord[a2].next = a1;
+
+					// Falls der Tausch die Gesamtdistanz vergrößert hat, zurücktauschen, ansonsten zeichnen
+					if(old_length < calc_length()) {
+						coord[a0].next = a1;
+						coord[a1].next = a2;
+						coord[a2].next = a3;
+						cycle++;
+					}
+					else {
+						draw_map();
+						cycle = 0;
+					}
+				}
+			}
+
+			// Tauschen zweier zufälliger Standorte
+			function switch_random() {
+				// Wahl zweier zufälliger Standorte und Bestimmung derer Nachbarn
+				var a0 = Math.floor(Math.random()*21);
+				var a1 = Math.floor(Math.random()*21);
+				var a0_0 = 100;
+				var a0_1 = coord[a0].next;
+				var a1_0 = 100;
+				var a1_1 = coord[a1].next;
+				coord.forEach((city,index) => {
+					if(city.next == a0) {
+						a0_0 = index;
+					}
+					if(city.next == a1) {
+						a1_0 = index;
+					}
+				});
+
+				// Randbedingungen, um Überschneidungen der Nachbarn auszuschließen
+				if(a0_0 < 100 && a1_0 < 100 && a0_0 != a0 && a1_0 != a1 && a0 != a1 && a0 != a1_0 && a1 != a0_0) {
+					// Tausch der Standorte
+					var old_length = calc_length();
+					coord[a0].next = a1_1;
+					coord[a0_0].next = a1;
+					coord[a1].next = a0_1;
+					coord[a1_0].next = a0;
+
+					// Falls der Tausch die Gesamtdistanz vergrößert hat, zurücktauschen, ansonsten zeichnen
+					if(old_length < calc_length()) {
+						coord[a0].next = a0_1;
+						coord[a0_0].next = a0;
+						coord[a1].next = a1_1;
+						coord[a1_0].next = a1;
+						cycle++;
+					}
+					else {
+						draw_map();
+						cycle = 0;
+					}
+				}
+			}
+		</script>
+	</head>
+	<body>
+	</body>
+</html>
